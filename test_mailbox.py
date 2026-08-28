@@ -299,6 +299,17 @@ check(
     "self.conn.close()" not in SOURCE and "conn.unselect()" in SOURCE,
     "sessions end with UNSELECT, never CLOSE, which expunges on the way out",
 )
+check(
+    "conn.delete(" not in SOURCE and "conn.rename(" not in SOURCE,
+    "no folder can be deleted or renamed: those commands are never issued",
+)
+check(
+    not any(
+        risky in SOURCE
+        for risky in ("urllib", "http.client", "requests.", "subprocess", "os.system")
+    ),
+    "no outbound HTTP or shell: mail cannot be posted anywhere but Yahoo's SMTP",
+)
 
 
 # --------------------------------------------------------------------------
