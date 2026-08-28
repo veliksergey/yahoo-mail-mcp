@@ -13,7 +13,7 @@ the short version for when you are already in the folder.
 | --- | --- |
 | `server.py` | HTTP listener, the three security layers, MCP protocol, tool routing |
 | `mailbox.py` | IMAP and SMTP against Yahoo; every helper above `class Mailbox` is pure |
-| `test_server.py` | 41 offline checks |
+| `test_server.py` | 48 offline checks |
 | `test_mailbox.py` | 49 offline checks |
 | `fly.toml` | Fly configuration — set `app` to your claimed name |
 | `Dockerfile` | `python:3.12-slim`, no `pip install` step |
@@ -98,10 +98,23 @@ nothing but that uid, so the send step cannot introduce a recipient or a line
 of text that was not in the draft you approved. Rejecting a draft is
 `discard_draft`, which moves it to Trash rather than destroying it.
 
-That makes the confirmation gate a property of the server rather than a promise
-about Claude's behaviour — the same reasoning as having no delete tool. Drafts
-land in the real Yahoo Drafts folder, so you can also review them in the Yahoo
-app on any device before saying yes.
+**Nothing can be moved without a preview first.** Same shape: `prepare_move`
+reports the sender, subject and date of every affected message and issues a
+`confirmation_id`; `confirm_move` accepts that id and nothing else. The
+selection cannot widen between the preview and the move, ids are single-use,
+and they expire after 15 minutes. Moving to `Trash` — what "delete" means here
+— goes through the same gate.
+
+That makes the confirmation gates a property of the server rather than a
+promise about Claude's behaviour — the same reasoning as having no delete tool.
+Drafts land in the real Yahoo Drafts folder, so you can also review them in the
+Yahoo app on any device before saying yes.
+
+What the server **cannot** enforce is the gap between the two calls: nothing at
+the protocol level proves a human actually approved in between. The structural
+guarantee is narrower and worth stating precisely — *no single tool call can
+both choose what happens and make it happen*, and the second call can never
+enlarge what the first one showed.
 
 ## Tools
 
@@ -111,7 +124,8 @@ app on any device before saying yes.
 | `create_folder` | New folder, nested paths like `Projects/Alpha Site` allowed |
 | `search_emails` | Filter by text, sender, subject, date range or unread |
 | `get_email` | Full body, headers and attachment names |
-| `move_emails` | File one or many messages into another folder |
+| `prepare_move` | Describe what a move would affect. Moves nothing |
+| `confirm_move` | Carry out a prepared move, by confirmation id |
 | `create_draft` | Write a new message into Drafts. Sends nothing |
 | `draft_reply` | Write a threaded reply into Drafts. Sends nothing |
 | `send_draft` | Send an existing draft, then move it to Sent. The only way out |
