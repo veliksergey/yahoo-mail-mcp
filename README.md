@@ -88,7 +88,8 @@ are fetched with `BODY.PEEK[]`, so Claude searching the inbox leaves your
 unread counts alone.
 
 **Yahoo's folder names are not the ones the web interface shows.** They are
-`Sent`, `Draft` (singular), `Trash` and `Bulk Mail`, and they are
+`Sent`, `Draft` (singular), `Trash` and `Bulk` (not "Bulk Mail" — it varies by
+account), and they are
 case-sensitive. Ask Claude to list folders before filing anything.
 
 **Nothing can be sent without a draft existing first.** There is no

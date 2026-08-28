@@ -31,7 +31,9 @@ SMTP_PORT = 465
 
 # Yahoo's built-in folders. These names are case-sensitive over IMAP and do
 # not always match what the web interface displays -- it is "Draft", singular,
-# and junk is "Bulk Mail".
+# and junk is "Bulk" on some accounts and "Bulk Mail" on others. INBOX is the
+# one exception: RFC 3501 makes that name case-insensitive, so "INBOX" selects
+# the folder even where the server reports it as "Inbox".
 SENT_FOLDER = "Sent"
 DRAFT_FOLDER = "Draft"
 TRASH_FOLDER = "Trash"
@@ -658,7 +660,8 @@ class _Session:
                 self._shutdown()
                 raise MailboxError(
                     f"No folder named {self.folder!r}. Yahoo's built-in folders are "
-                    "Sent, Draft, Trash and Bulk Mail, and names are case-sensitive."
+                    "Sent, Draft, Trash and Bulk, and names are case-sensitive. "
+                    "Run list_folders to see exactly what this account calls them."
                 )
             self.selected = True
         return self.conn
@@ -936,7 +939,7 @@ class Mailbox:
                     raise MailboxError(
                         f"Could not file into {destination_folder!r}{': ' + detail if detail else ''}. "
                         "Folder names are case-sensitive and Yahoo's own are Sent, Draft, "
-                        "Trash and Bulk Mail. Run list_folders to see the exact names."
+                        "Trash and Bulk. Run list_folders to see the exact names."
                     )
                 typ, data = conn.uid("STORE", uid_set, "+FLAGS", "(\\Deleted)")
                 _require_ok(typ, data, "Marking the originals")
