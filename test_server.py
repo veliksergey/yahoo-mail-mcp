@@ -6,7 +6,7 @@ Offline tests for server.py. No socket is opened and no mail is touched.
 
 import sys
 
-from mailbox import MailboxError
+from mailbox import MAX_MOVE_BATCH, MailboxError
 from server import (
     TOOLS,
     client_ip,
@@ -138,6 +138,17 @@ check(
 check(
     "move_emails" not in names,
     "no one-step move tool exists; filing must start with prepare_move",
+)
+check(
+    all(
+        "untrusted" in by_name[tool]["description"].lower()
+        for tool in ("get_email", "search_emails")
+    ),
+    "the reading tools declare that message content is untrusted input",
+)
+check(
+    MAX_MOVE_BATCH <= 100,
+    "bulk moves are capped, so one instruction cannot sweep the mailbox",
 )
 
 # --- the allowlist must not switch itself off by accident ---
