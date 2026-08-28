@@ -14,8 +14,11 @@ from server import (
     ip_allowed,
     parse_cidrs,
     path_matches_secret,
+    record_pending,
     redact_token,
+    resolve_networks,
     secret_from_path,
+    take_pending,
     wants_sse,
 )
 
@@ -37,7 +40,8 @@ DOCUMENTED_TOOLS = [
     "create_folder",
     "search_emails",
     "get_email",
-    "move_emails",
+    "prepare_move",
+    "confirm_move",
     "create_draft",
     "draft_reply",
     "send_draft",
@@ -111,7 +115,7 @@ check(
 
 names = [tool["name"] for tool in TOOLS]
 by_name = {tool["name"]: tool for tool in TOOLS}
-check(len(TOOLS) == 9, "there are exactly nine tools")
+check(len(TOOLS) == 10, "there are exactly ten tools")
 check(names == DOCUMENTED_TOOLS, "the tools match the documented set, in order")
 check(
     not any("delete" in name or "expunge" in name for name in names),
@@ -126,6 +130,34 @@ check(
     and by_name["send_draft"]["inputSchema"]["additionalProperties"] is False,
     "send_draft takes only a uid, so the send step cannot introduce new content",
 )
+check(
+    set(by_name["confirm_move"]["inputSchema"]["properties"]) == {"confirmation_id"}
+    and by_name["confirm_move"]["inputSchema"]["additionalProperties"] is False,
+    "confirm_move takes only an id, so it cannot widen what the user approved",
+)
+check(
+    "move_emails" not in names,
+    "no one-step move tool exists; filing must start with prepare_move",
+)
+
+# --- the allowlist must not switch itself off by accident ---
+
+fallback = resolve_networks("160.79.104/21")  # a plausible typo: parses to nothing
+check(
+    len(fallback) > 0 and not ip_allowed("203.0.113.7", fallback),
+    "a malformed ALLOW_CIDRS falls back to the default instead of allowing everyone",
+)
+check(resolve_networks("") == parse_cidrs("160.79.104.0/21"), "an unset ALLOW_CIDRS uses the default")
+check(resolve_networks("off") == [], "the filter can be disabled, but only deliberately")
+
+# --- confirmation ids ---
+
+ticket = record_pending({"uids": ["1"], "source_folder": "INBOX", "destination_folder": "Trash"})
+check(
+    take_pending(ticket) is not None and take_pending(ticket) is None,
+    "a confirmation id works exactly once and cannot be replayed",
+)
+check(take_pending("never-issued") is None, "an unknown confirmation id is refused")
 check(
     all(tool.get("description") and isinstance(tool.get("inputSchema"), dict) for tool in TOOLS),
     "every tool has a description and an input schema",
@@ -177,7 +209,7 @@ check(
 )
 
 listed = dispatch({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}, fake_tools)
-check(len(listed["result"]["tools"]) == 9, "tools/list returns all nine")
+check(len(listed["result"]["tools"]) == 10, "tools/list returns all ten")
 
 called = dispatch(
     {

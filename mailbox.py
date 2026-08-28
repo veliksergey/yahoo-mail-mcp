@@ -804,6 +804,51 @@ class Mailbox:
 
     # -- filing -----------------------------------------------------------
 
+    def preview_move(self, uids, source_folder: str, destination_folder: str) -> dict:
+        """Describe what a move would affect, touching nothing.
+
+        Every exposed path to moving mail goes through here first, so the user
+        is shown real subjects and senders rather than bare numbers before
+        anything is filed.
+        """
+        wanted = as_uid_list(uids)
+        if not wanted:
+            raise MailboxError("At least one UID is required")
+        if not source_folder or not destination_folder:
+            raise MailboxError("Both source_folder and destination_folder are required")
+        if source_folder == destination_folder:
+            raise MailboxError("Source and destination are the same folder")
+
+        messages: list[dict] = []
+        with self._session(source_folder, readonly=True) as conn:
+            typ, data = conn.uid(
+                "FETCH",
+                ",".join(wanted),
+                "(BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE)])",
+            )
+            _require_ok(typ, data, "Reading the messages to be moved")
+            for meta, payload in parse_fetch_items(data):
+                msg = parse_message(payload)
+                messages.append(
+                    {
+                        "uid": uid_from_meta(meta),
+                        "from": header_str(msg, "From"),
+                        "subject": header_str(msg, "Subject", "(no subject)"),
+                        "date": header_str(msg, "Date"),
+                    }
+                )
+
+        found = {entry["uid"] for entry in messages}
+        return {
+            "uids": wanted,
+            "source_folder": source_folder,
+            "destination_folder": destination_folder,
+            "count": len(messages),
+            "messages": messages,
+            "not_found": [uid for uid in wanted if uid not in found],
+            "to_trash": destination_folder.strip().lower() == TRASH_FOLDER.lower(),
+        }
+
     def move_emails(self, uids, source_folder: str, destination_folder: str) -> dict:
         wanted = as_uid_list(uids)
         if not wanted:
