@@ -4,6 +4,7 @@ Offline tests for server.py. No socket is opened and no mail is touched.
     python test_server.py
 """
 
+import pathlib
 import sys
 
 from mailbox import MAX_MOVE_BATCH, MailboxError
@@ -169,6 +170,17 @@ check(
     "a confirmation id works exactly once and cannot be replayed",
 )
 check(take_pending("never-issued") is None, "an unknown confirmation id is refused")
+
+# --- the server has no way to reach anything but Yahoo ---
+
+SERVER_SOURCE = pathlib.Path(__file__).with_name("server.py").read_text(encoding="utf-8")
+check(
+    not any(
+        risky in SERVER_SOURCE
+        for risky in ("urllib", "http.client", "requests.", "subprocess", "os.system", "open(")
+    ),
+    "the server has no HTTP client, no shell and no file I/O to leak mail through",
+)
 check(
     all(tool.get("description") and isinstance(tool.get("inputSchema"), dict) for tool in TOOLS),
     "every tool has a description and an input schema",

@@ -13,8 +13,8 @@ the short version for when you are already in the folder.
 | --- | --- |
 | `server.py` | HTTP listener, the three security layers, MCP protocol, tool routing |
 | `mailbox.py` | IMAP and SMTP against Yahoo; every helper above `class Mailbox` is pure |
-| `test_server.py` | 48 offline checks |
-| `test_mailbox.py` | 49 offline checks |
+| `test_server.py` | 51 offline checks |
+| `test_mailbox.py` | 51 offline checks |
 | `fly.toml` | Fly configuration — set `app` to your claimed name |
 | `Dockerfile` | `python:3.12-slim`, no `pip install` step |
 
@@ -82,6 +82,18 @@ permanently as a *side effect*, and neither is used:
   destination, so nothing is lost.
 
 `test_mailbox.py` asserts against the source that neither call reappears.
+
+**Folders cannot be deleted or renamed.** The IMAP commands that would do it,
+`DELETE` and `RENAME`, are never issued. `create_folder` is the only folder
+operation, and creating is not destructive. Also asserted against the source.
+
+**There is no way out except Yahoo's SMTP.** Neither file imports `urllib`,
+`http.client`, `requests`, `subprocess` or `os.system`, and neither opens a
+file. The server therefore has no HTTP client to POST your mail to an attacker,
+no shell, and no disk cache — the only two outbound destinations in the whole
+program are the hardcoded `imap.mail.yahoo.com` and `smtp.mail.yahoo.com`, both
+with certificate verification on. Getting data out means sending an email,
+which means an approved draft. This is checked by the test suites too.
 
 **Reading never marks mail as read.** Folders are selected read-only and bodies
 are fetched with `BODY.PEEK[]`, so Claude searching the inbox leaves your
