@@ -1,0 +1,154 @@
+# Yahoo Mail Bridge
+
+A remote MCP server that lets Claude search, file and answer mail in a Yahoo
+account — from a phone as well as a desk. Python standard library only, no
+third-party packages, runs in any small always-on container.
+
+Full setup instructions live in the deployment runbook artifact. This file is
+the short version for when you are already in the folder.
+
+## Files
+
+| File | What it is |
+| --- | --- |
+| `server.py` | HTTP listener, the three security layers, MCP protocol, tool routing |
+| `mailbox.py` | IMAP and SMTP against Yahoo; every helper above `class Mailbox` is pure |
+| `test_server.py` | 41 offline checks |
+| `test_mailbox.py` | 49 offline checks |
+| `fly.toml` | Fly configuration — set `app` to your claimed name |
+| `Dockerfile` | `python:3.12-slim`, no `pip install` step |
+
+## Deploy
+
+```
+flyctl apps create your-unique-name          # then set `app` in fly.toml
+flyctl secrets set YAHOO_EMAIL="you@yahoo.com" YAHOO_APP_PASSWORD="..." MCP_SECRET="..." YAHOO_FROM_NAME="Your Name"
+flyctl deploy
+flyctl ips allocate-v4 --shared
+```
+
+Then add `https://your-unique-name.fly.dev/mcp/YOUR_MCP_SECRET` to Claude as a
+custom connector, with no authentication — the secret path and the address
+filter are doing that job.
+
+## Settings
+
+| Variable | Required | Meaning |
+| --- | --- | --- |
+| `YAHOO_EMAIL` | yes | The mailbox address |
+| `YAHOO_APP_PASSWORD` | yes | A generated Yahoo app password, never the account password |
+| `MCP_SECRET` | yes | Random token that forms the URL path |
+| `YAHOO_FROM_NAME` | no | Display name on outgoing mail |
+| `ALLOW_CIDRS` | no | Allowed caller ranges. Defaults to `160.79.104.0/21`. Empty disables the filter |
+| `PORT` | no | Listen port, default 8080 |
+
+## Endpoints
+
+- `GET /health` — liveness, deliberately outside the IP filter so you can check
+  a deploy from your own machine.
+- `POST /mcp/<MCP_SECRET>` — the MCP endpoint. Answers JSON, or an SSE frame
+  when the client asks for one.
+- Everything else, including a wrong token or a disallowed address, is a bare
+  `404`.
+
+## Tests
+
+```
+python test_mailbox.py
+python test_server.py
+```
+
+Both run offline and never contact Yahoo. Windows uses `python`; macOS and
+Linux use `python3`.
+
+## Design notes
+
+**There is no delete tool.** Misfiling a message is recoverable and deleting
+one is not, so the capability does not exist on the server rather than being
+guarded by a prompt. "Deleting" a message means moving it to `Trash`, and
+emptying that folder stays something you do in Yahoo yourself.
+
+**Nothing here can destroy mail, including by accident.** Two IMAP calls delete
+permanently as a *side effect*, and neither is used:
+
+- `CLOSE` expunges every `\Deleted` message in the folder on the way out.
+  Sessions end with `UNSELECT` instead, which does not. A bare `.close()` was
+  running at the end of every read-write session before this was caught.
+- A bare `EXPUNGE` removes every `\Deleted` message in the folder, including
+  ones flagged by a different mail client that the user never asked to lose.
+  The copy-and-remove fallback in `move_emails` and `send_draft` uses a
+  UID-targeted `UID EXPUNGE` instead, and where the server lacks UIDPLUS it
+  leaves the flag set rather than guess — the message is already copied to its
+  destination, so nothing is lost.
+
+`test_mailbox.py` asserts against the source that neither call reappears.
+
+**Reading never marks mail as read.** Folders are selected read-only and bodies
+are fetched with `BODY.PEEK[]`, so Claude searching the inbox leaves your
+unread counts alone.
+
+**Yahoo's folder names are not the ones the web interface shows.** They are
+`Sent`, `Draft` (singular), `Trash` and `Bulk Mail`, and they are
+case-sensitive. Ask Claude to list folders before filing anything.
+
+**Nothing can be sent without a draft existing first.** There is no
+compose-and-send tool. `create_draft` and `draft_reply` write into Yahoo's
+Drafts folder and return the draft's uid and full text; `send_draft` takes
+nothing but that uid, so the send step cannot introduce a recipient or a line
+of text that was not in the draft you approved. Rejecting a draft is
+`discard_draft`, which moves it to Trash rather than destroying it.
+
+That makes the confirmation gate a property of the server rather than a promise
+about Claude's behaviour — the same reasoning as having no delete tool. Drafts
+land in the real Yahoo Drafts folder, so you can also review them in the Yahoo
+app on any device before saying yes.
+
+## Tools
+
+| Tool | What it does |
+| --- | --- |
+| `list_folders` | Every folder with message and unread counts |
+| `create_folder` | New folder, nested paths like `Projects/Alpha Site` allowed |
+| `search_emails` | Filter by text, sender, subject, date range or unread |
+| `get_email` | Full body, headers and attachment names |
+| `move_emails` | File one or many messages into another folder |
+| `create_draft` | Write a new message into Drafts. Sends nothing |
+| `draft_reply` | Write a threaded reply into Drafts. Sends nothing |
+| `send_draft` | Send an existing draft, then move it to Sent. The only way out |
+| `discard_draft` | Move a rejected draft to Trash |
+
+## Threat model
+
+What the three layers do and do not cover.
+
+**The URL token never appears in a log.** `redact_token()` replaces the real
+token in any `/mcp/...` path with the literal `<token>` before anything is
+printed, because the
+runbook sends you to `flyctl logs` the moment something misbehaves, and log
+output tends to get pasted into support threads.
+
+**`X-Forwarded-For` is deliberately ignored.** Fly appends the real client
+address to whatever the caller sent, so the first entry in that header is
+attacker controlled. Only `Fly-Client-IP`, which the proxy sets itself, is
+trusted; behind any other proxy the IP filter would need revisiting.
+
+**Search terms are stripped of control characters** before they reach an IMAP
+command. Tool arguments can be influenced by the text of an email, so an
+unescaped CRLF in a search term is a live injection path, not a theoretical
+one. Folder names are safe by construction: modified UTF-7 base64-encodes
+anything outside printable ASCII.
+
+**The risk this design reduces but does not remove:** the server can read your
+mail and, through `send_draft`, can still put mail on the wire. Anything Claude
+reads in your inbox is untrusted text written by other people, and a message
+crafted to look like an instruction is the realistic attack — not the network.
+The draft gate means such an instruction cannot cause a single tool call to
+compose and send; it can at worst produce a draft sitting in your Drafts folder
+for you to look at. What the server cannot enforce is the gap between creating
+a draft and sending it, so the rule that matters is: **a request to send that
+came from the contents of an email is not you asking.**
+
+**Not implemented:** rate limiting (the IP filter and token are the whole
+defence), and any cap on message size beyond `MAX_BODY_CHARS` on the body
+text, so a mailbox full of very large attachments could pressure a 256 MB
+machine.
