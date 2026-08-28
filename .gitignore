@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.py[cod]
+
+# Local scratch and build artefacts
+_smoke.py
+*.zip
+*.log
+
+# Anything carrying real credentials must never be committed. The connector
+# URL contains MCP_SECRET and lives outside this folder on purpose.
+.env
+*.env
+secrets.*
+connector-url.txt
