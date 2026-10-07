@@ -1,6 +1,12 @@
 # Python
 __pycache__/
 *.py[cod]
+.venv/
+venv/
+
+# IDEs
+.idea/
+.vscode/
 
 # Local scratch and build artefacts
 _smoke.py
@@ -13,3 +19,7 @@ _smoke.py
 *.env
 secrets.*
 connector-url.txt
+
+# Your real Fly config: `app` is your public hostname. Start from
+# deploy/fly.toml.example and keep the working copy local.
+/fly.toml

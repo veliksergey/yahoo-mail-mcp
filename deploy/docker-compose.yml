@@ -1,0 +1,29 @@
+# Runs the bridge on any Docker host. Put a TLS-terminating reverse proxy in
+# front of it (Caddy, nginx, your platform's router, a Cloudflare Tunnel) and
+# set TRUSTED_IP_HEADER in .env to the header that proxy fills in.
+#
+#   cp deploy/env.example deploy/.env      # then fill it in
+#   docker compose -f deploy/docker-compose.yml up -d --build
+#
+services:
+  bridge:
+    build: ..
+    restart: unless-stopped
+    env_file: .env
+    # Bind to localhost only: the proxy is the public face, not this port.
+    ports:
+      - "127.0.0.1:8080:8080"
+    # The server never writes to disk, so the filesystem can be read-only.
+    read_only: true
+    tmpfs:
+      - /tmp
+    mem_limit: 256m
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/health', timeout=3).status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3

@@ -35,7 +35,7 @@ MAX_REQUEST_BYTES = 1_048_576
 
 PROTOCOL_VERSIONS = ("2025-06-18", "2025-03-26", "2024-11-05")
 DEFAULT_PROTOCOL = "2025-06-18"
-SERVER_INFO = {"name": "yahoo-mail-bridge", "version": "1.0.0"}
+SERVER_INFO = {"name": "yahoo-mail-bridge", "version": "1.1.0"}
 
 CONFIG: dict = {}
 
@@ -114,17 +114,52 @@ def ip_allowed(text: str, networks: list) -> bool:
     return any(address in network for network in networks)
 
 
-def client_ip(headers, peer: str = "") -> str:
-    """The real caller's address, from the one header we can trust.
+FORWARDED_FOR = "x-forwarded-for"
 
-    Fly's proxy sets Fly-Client-IP itself, so a client cannot forge it.
-    X-Forwarded-For is deliberately NOT consulted: Fly *appends* the real
-    address to whatever the client sent, so the first entry is attacker
-    controlled and reading it would hand anyone a way past the IP filter.
+
+def resolve_trusted_header(raw: str | None) -> str:
+    """Which request header, if any, carries the real caller's address.
+
+    Behind a reverse proxy the socket peer is the proxy itself, so the caller's
+    address has to come from a header -- but only from one the proxy sets on
+    every request regardless of what the client sent. Fly sets Fly-Client-IP
+    that way, Cloudflare sets CF-Connecting-IP, and a Caddy or nginx you run
+    yourself can be told to set X-Real-IP from the connection. Name it in
+    TRUSTED_IP_HEADER.
+
+    Unset means "believe nothing but the socket", which behind a proxy refuses
+    every request. That is the right way to fail: closed, and obvious from the
+    logs within a minute of deploying.
     """
-    direct = (headers.get("Fly-Client-IP") or "").strip()
-    if direct:
-        return direct
+    name = (raw or "").strip()
+    if name.lower() == FORWARDED_FOR:
+        print(
+            "TRUSTED_IP_HEADER=X-Forwarded-For is accepted, but only the LAST "
+            "address in it is used. That is correct only when exactly one proxy "
+            "sits in front of this server and it appends to the header. If your "
+            "host offers a dedicated header such as Fly-Client-IP, prefer that.",
+            flush=True,
+        )
+    return name
+
+
+def client_ip(headers, peer: str = "", trusted_header: str = "") -> str:
+    """The caller's address: from the one configured header, else the socket.
+
+    A header is believed only when TRUSTED_IP_HEADER names it, because on a
+    host whose proxy does not set that header a client could simply send it.
+    X-Forwarded-For gets one special rule: proxies *append* the real address
+    to whatever the client sent, so the first entry is attacker controlled and
+    only the last one -- written by the proxy nearest us -- means anything.
+    Every other header is taken as-is.
+    """
+    name = (trusted_header or "").strip()
+    if name:
+        value = (headers.get(name) or "").strip()
+        if value:
+            if name.lower() == FORWARDED_FOR:
+                return value.rsplit(",", 1)[-1].strip()
+            return value
     return (peer or "").strip()
 
 
@@ -161,8 +196,8 @@ def redact_token(text: str) -> str:
     """Strip the URL token out of anything on its way to the log.
 
     The token is one of only three things guarding this mailbox, and the
-    runbook sends people to `fly logs` the moment something misbehaves. It
-    must never appear there.
+    first thing anyone does when something misbehaves is read the logs --
+    which then get pasted into support threads. It must never appear there.
     """
     return _TOKEN_IN_PATH.sub(r"\1<token>", text or "")
 
@@ -483,7 +518,7 @@ def dispatch(payload, call_tool) -> dict | None:
         try:
             result = call_tool(name, arguments)
         except MailboxError as exc:
-            # Without this the failure is invisible in `flyctl logs`: the HTTP
+            # Without this the failure is invisible in the server logs: the HTTP
             # request still succeeds and the error only reaches the client.
             print(f"tool {name} FAILED: {exc}", flush=True)
             return rpc_result(request_id, tool_failure(str(exc)))
@@ -640,7 +675,11 @@ class Handler(BaseHTTPRequestHandler):
         self._respond(404, b'{"error":"not found"}')
 
     def _authorized(self) -> bool:
-        caller = client_ip(self.headers, self.client_address[0] if self.client_address else "")
+        caller = client_ip(
+            self.headers,
+            self.client_address[0] if self.client_address else "",
+            CONFIG.get("trusted_header", ""),
+        )
         if not ip_allowed(caller, CONFIG.get("networks") or []):
             print(f"Rejected request from disallowed IP {caller}", flush=True)
             return False
@@ -731,7 +770,7 @@ def load_config(env=None) -> dict:
         raise SystemExit(
             "Missing required secrets: "
             + ", ".join(missing)
-            + "\nSet them with:  fly secrets set NAME=\"value\""
+            + "\nSet them as environment variables on your host -- see DEPLOY.md."
         )
 
     return {
@@ -740,6 +779,7 @@ def load_config(env=None) -> dict:
         "secret": secret,
         "from_name": (env.get("YAHOO_FROM_NAME") or "").strip(),
         "networks": resolve_networks(env.get("ALLOW_CIDRS")),
+        "trusted_header": resolve_trusted_header(env.get("TRUSTED_IP_HEADER")),
         "port": _as_int(env.get("PORT"), 8080),
     }
 
@@ -795,9 +835,19 @@ def main() -> None:
         f"{SERVER_INFO['name']} {SERVER_INFO['version']} listening on :{config['port']}\n"
         f"  mailbox     {config['address']}\n"
         f"  tools       {len(TOOLS)} (no delete; send and move each need confirming)\n"
-        f"  ip filter   {', '.join(str(n) for n in networks) if networks else 'OFF'}",
+        f"  ip filter   {', '.join(str(n) for n in networks) if networks else 'OFF'}\n"
+        f"  ip header   {config['trusted_header'] or 'none -- the socket peer is checked'}",
         flush=True,
     )
+    if networks and not config["trusted_header"]:
+        print(
+            "Note: TRUSTED_IP_HEADER is unset, so the address filter checks the socket "
+            "peer. Behind a reverse proxy that is the proxy's own address and every "
+            "request will be refused. Set TRUSTED_IP_HEADER to the header your proxy "
+            "fills in from the connection: Fly-Client-IP on Fly, CF-Connecting-IP "
+            "behind Cloudflare, X-Real-IP from your own Caddy or nginx.",
+            flush=True,
+        )
 
     server = ThreadingHTTPServer(("0.0.0.0", config["port"]), Handler)
     server.daemon_threads = True

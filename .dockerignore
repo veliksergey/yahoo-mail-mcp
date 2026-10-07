@@ -1,8 +1,16 @@
-test_*.py
-README.md
-fly.toml
+# The image needs server.py and mailbox.py and nothing else.
 .git
+.github
+.idea
+.vscode
+deploy
+test_*.py
+*.md
+LICENSE
+fly.toml
 .gitignore
+.gitattributes
+.dockerignore
 __pycache__/
 *.pyc
 *.zip

@@ -1,5 +1,7 @@
-# Set `app` to the name you claimed with `flyctl apps create`.
-# It becomes your public address, so make it unguessable.
+# Fly.io configuration. Copy this file to the repository root as `fly.toml`
+# (that path is gitignored) and set `app` to the name you claimed with
+# `flyctl apps create`. The name becomes your public hostname, so make it
+# unguessable and keep it out of version control.
 app = "your-unique-name"
 
 # Pick the region nearest you: `flyctl platform regions` lists them.
@@ -12,6 +14,9 @@ primary_region = "iad"
   # Anthropic's published egress range. Override with:
   #   flyctl secrets set ALLOW_CIDRS="160.79.104.0/21,THE.NEW.IP/32"
   ALLOW_CIDRS = "160.79.104.0/21"
+  # Fly's proxy writes the caller's address into this header on every request,
+  # so it is the one header the IP filter may believe.
+  TRUSTED_IP_HEADER = "Fly-Client-IP"
 
 [http_service]
   internal_port = 8080

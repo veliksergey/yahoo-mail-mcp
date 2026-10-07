@@ -18,6 +18,7 @@ from server import (
     record_pending,
     redact_token,
     resolve_networks,
+    resolve_trusted_header,
     secret_from_path,
     take_pending,
     wants_sse,
@@ -34,6 +35,7 @@ def check(condition, label):
         FAILURES.append(label)
 
 
+# An obviously made-up token, so the fixture can never be mistaken for a real one.
 SECRET = "test-token-0123456789abcdefghijklmnopqrstuv"
 
 DOCUMENTED_TOOLS = [
@@ -65,21 +67,38 @@ check(ip_allowed("203.0.113.7", []), "an empty allowlist switches the filter off
 check(not ip_allowed("not-an-ip", anthropic), "an unparseable address is refused")
 check(ip_allowed("::ffff:160.79.104.5", anthropic), "an IPv4-mapped IPv6 address is unwrapped")
 
+PROXY = "Fly-Client-IP"  # any header a proxy sets itself; configured, never assumed
+
 check(
-    client_ip({"Fly-Client-IP": "160.79.104.5"}, "172.16.0.1") == "160.79.104.5",
-    "Fly-Client-IP is used when present",
+    client_ip({PROXY: "160.79.104.5"}, "172.16.0.1", PROXY) == "160.79.104.5",
+    "the configured proxy header is used when present",
 )
-check(client_ip({}, "172.16.0.1") == "172.16.0.1", "the socket peer is the last resort")
 check(
-    client_ip({"X-Forwarded-For": "160.79.104.5"}, "203.0.113.9") == "203.0.113.9",
-    "X-Forwarded-For is ignored -- its first entry is attacker controlled",
+    client_ip({PROXY: "160.79.104.5"}, "172.16.0.1") == "172.16.0.1",
+    "a proxy header is ignored unless TRUSTED_IP_HEADER names it -- any client could send one",
+)
+check(client_ip({}, "172.16.0.1", PROXY) == "172.16.0.1", "the socket peer is the last resort")
+check(
+    client_ip({"X-Forwarded-For": "160.79.104.5"}, "203.0.113.9", PROXY) == "203.0.113.9",
+    "an unconfigured X-Forwarded-For is ignored -- its first entry is attacker controlled",
 )
 check(
     not ip_allowed(
-        client_ip({"X-Forwarded-For": "160.79.104.5, 203.0.113.9"}, "203.0.113.9"), anthropic
+        client_ip({"X-Forwarded-For": "160.79.104.5, 203.0.113.9"}, "203.0.113.9", PROXY),
+        anthropic,
     ),
     "a spoofed X-Forwarded-For cannot talk its way past the IP filter",
 )
+check(
+    client_ip({"X-Forwarded-For": "160.79.104.5, 203.0.113.9"}, "10.0.0.1", "X-Forwarded-For")
+    == "203.0.113.9",
+    "when X-Forwarded-For is trusted, only the last entry -- the proxy's own -- counts",
+)
+check(
+    resolve_trusted_header("") == "" and resolve_trusted_header(None) == "",
+    "no proxy header is trusted unless one is configured: the filter fails closed",
+)
+check(resolve_trusted_header(" Fly-Client-IP ") == "Fly-Client-IP", "the header name is kept as given")
 
 # --------------------------------------------------------------------------
 # Layer 2: the secret in the URL

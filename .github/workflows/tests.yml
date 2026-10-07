@@ -1,0 +1,45 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-tests:
+    name: offline tests (python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: byte-compile
+        run: python -m compileall -q server.py mailbox.py
+      - name: test_mailbox.py
+        run: python test_mailbox.py
+      - name: test_server.py
+        run: python test_server.py
+
+  container:
+    name: container builds and refuses to start without secrets
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: build
+        run: docker build -t yahoo-mail-bridge .
+      - name: start without secrets
+        run: |
+          set +e
+          output=$(docker run --rm yahoo-mail-bridge 2>&1)
+          code=$?
+          echo "$output"
+          if [ "$code" -eq 0 ]; then echo "started with no secrets configured"; exit 1; fi
+          echo "$output" | grep -q "Missing required secrets"
