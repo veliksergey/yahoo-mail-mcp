@@ -63,14 +63,14 @@ def check_raises(exc_type, fn, label):
 
 check(encode_mailbox("INBOX") == "INBOX", "plain ASCII survives encoding")
 check(
-    encode_mailbox("Deals/412 Delaware") == "Deals/412 Delaware",
+    encode_mailbox("Projects/Alpha Site") == "Projects/Alpha Site",
     "nested ASCII folder needs no encoding",
 )
 check(encode_mailbox("A&B") == "A&-B", "a literal ampersand becomes &-")
 check(decode_mailbox("&-") == "&", "&- decodes back to a literal ampersand")
 check("&" in encode_mailbox("Ünread"), "non-ASCII triggers base64 encoding")
 check(
-    decode_mailbox(encode_mailbox("Договор/Шулл")) == "Договор/Шулл",
+    decode_mailbox(encode_mailbox("Договоры/Аренда")) == "Договоры/Аренда",
     "non-ASCII folder names round-trip",
 )
 
@@ -78,7 +78,7 @@ check(
 # Command quoting
 # --------------------------------------------------------------------------
 
-check(quote_mailbox("Deals/412 Delaware") == '"Deals/412 Delaware"', "folder names get quoted")
+check(quote_mailbox("Projects/Alpha Site") == '"Projects/Alpha Site"', "folder names get quoted")
 check(
     quote_mailbox('He said "hi"') == '"He said \\"hi\\""',
     "embedded quotes are escaped, not dropped",
@@ -93,9 +93,9 @@ check(simple is not None and simple["name"] == "INBOX", "a basic LIST line yield
 check(simple is not None and simple["flags"] == ["\\HasNoChildren"], "LIST flags are split out")
 check(simple is not None and simple["delimiter"] == "/", "the hierarchy delimiter is read")
 
-spaced = parse_list_line(rb'(\HasChildren \Noselect) "/" "Deals/412 Delaware"')
+spaced = parse_list_line(rb'(\HasChildren \Noselect) "/" "Projects/Alpha Site"')
 check(
-    spaced is not None and spaced["name"] == "Deals/412 Delaware",
+    spaced is not None and spaced["name"] == "Projects/Alpha Site",
     "quoted folder names keep their spaces",
 )
 check(parse_list_line(b"nonsense") is None, "an unparseable LIST line is skipped, not guessed at")
@@ -172,7 +172,7 @@ check(strip_html("<p>Tom &amp; Jerry</p>") == "Tom & Jerry", "HTML entities are 
 
 PLAIN = (
     b"From: Victor <victor@example.com>\r\n"
-    b"To: sergey@example.com\r\n"
+    b"To: alice@example.com\r\n"
     b"Subject: =?utf-8?B?RWFzZW1lbnQgcGxhdA==?=\r\n"
     b"Date: Fri, 28 Aug 2026 09:00:00 -0400\r\n"
     b"Message-ID: <abc123@example.com>\r\n"
@@ -183,7 +183,7 @@ PLAIN = (
 
 HTML_ONLY = (
     b"From: Clerk <clerk@example.com>\r\n"
-    b"To: sergey@example.com\r\n"
+    b"To: alice@example.com\r\n"
     b"Subject: Recording\r\n"
     b"MIME-Version: 1.0\r\n"
     b"Content-Type: text/html; charset=utf-8\r\n"
@@ -193,7 +193,7 @@ HTML_ONLY = (
 
 WITH_ATTACHMENT = (
     b"From: Surveyor <survey@example.com>\r\n"
-    b"To: sergey@example.com\r\n"
+    b"To: alice@example.com\r\n"
     b"Subject: Plat\r\n"
     b"MIME-Version: 1.0\r\n"
     b'Content-Type: multipart/mixed; boundary="EDGE"\r\n'
@@ -276,7 +276,7 @@ check(
 check(reply_subject("Plat revision") == "Re: Plat revision", "replies gain a Re: prefix")
 check(reply_subject("Re: Plat revision") == "Re: Plat revision", "Re: is never doubled up")
 
-reply = build_reply(plain_msg, "Got it, thanks.", "sergey@example.com", "Sergey")
+reply = build_reply(plain_msg, "Got it, thanks.", "alice@example.com", "Alice")
 check(
     reply["In-Reply-To"] == "<abc123@example.com>"
     and "> The surveyor sent the revised plat." in reply.get_content(),

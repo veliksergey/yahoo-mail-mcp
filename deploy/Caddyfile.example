@@ -1,0 +1,12 @@
+# Caddy in front of the bridge on a VPS. Caddy obtains and renews the TLS
+# certificate by itself. Replace the hostname with yours.
+#
+# header_up with a fixed value REPLACES any X-Real-IP the client sent, so the
+# bridge sees the connection's real address and nothing the caller chose.
+# Pair with TRUSTED_IP_HEADER=X-Real-IP in deploy/.env.
+
+mail-bridge.example.com {
+    reverse_proxy 127.0.0.1:8080 {
+        header_up X-Real-IP {remote_host}
+    }
+}
