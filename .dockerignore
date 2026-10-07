@@ -1,4 +1,4 @@
-# The image needs server.py and mailbox.py and nothing else.
+# The image needs server.py and yahoo_mailbox.py and nothing else.
 .git
 .github
 .idea

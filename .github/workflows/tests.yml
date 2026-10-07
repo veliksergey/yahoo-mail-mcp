@@ -22,7 +22,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - name: byte-compile
-        run: python -m compileall -q server.py mailbox.py
+        run: python -m compileall -q server.py yahoo_mailbox.py
       - name: test_mailbox.py
         run: python test_mailbox.py
       - name: test_server.py

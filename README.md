@@ -130,7 +130,7 @@ Everything is an environment variable.
 | File | What it is |
 | --- | --- |
 | `server.py` | HTTP listener, the three security layers, MCP protocol, tool routing |
-| `mailbox.py` | IMAP and SMTP against Yahoo; every helper above `class Mailbox` is pure |
+| `yahoo_mailbox.py` | IMAP and SMTP against Yahoo; every helper above `class Mailbox` is pure |
 | `test_server.py`, `test_mailbox.py` | Offline checks, no credentials, no network |
 | `Dockerfile` | `python:3.12-slim`, no `pip install` step, non-root user |
 | `deploy/` | Example configs: Fly, Docker Compose, Caddy, environment file |

@@ -7,7 +7,7 @@ Offline tests for server.py. No socket is opened and no mail is touched.
 import pathlib
 import sys
 
-from mailbox import MAX_MOVE_BATCH, MailboxError
+from yahoo_mailbox import MAX_MOVE_BATCH, MailboxError
 from server import (
     TOOLS,
     client_ip,

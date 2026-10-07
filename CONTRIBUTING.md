@@ -28,12 +28,12 @@ that weakens any of them will not be merged, however convenient:
    user was shown.
 
 Two more are about the process itself: the standard library only, and no
-outbound HTTP, shell or file I/O anywhere in `server.py` or `mailbox.py`. The
+outbound HTTP, shell or file I/O anywhere in `server.py` or `yahoo_mailbox.py`. The
 tests check for those too.
 
 ## Shape of the code
 
-- Everything above `class Mailbox` in `mailbox.py` is a pure function, and
+- Everything above `class Mailbox` in `yahoo_mailbox.py` is a pure function, and
   that is where new parsing or composing logic goes, with a check in
   `test_mailbox.py`.
 - Tool descriptions are part of the security design. They tell the model what

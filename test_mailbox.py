@@ -1,5 +1,5 @@
 """
-Offline tests for mailbox.py. Never contacts Yahoo, needs no credentials.
+Offline tests for yahoo_mailbox.py. Never contacts Yahoo, needs no credentials.
 
     python test_mailbox.py
 """
@@ -7,7 +7,7 @@ Offline tests for mailbox.py. Never contacts Yahoo, needs no credentials.
 import pathlib
 import sys
 
-from mailbox import (
+from yahoo_mailbox import (
     MailboxError,
     appenduid_from_response,
     as_address_list,
@@ -289,7 +289,7 @@ check(
 # effect, silently and beyond the UIDs we asked about, so neither may appear.
 # --------------------------------------------------------------------------
 
-SOURCE = pathlib.Path(__file__).with_name("mailbox.py").read_text(encoding="utf-8")
+SOURCE = pathlib.Path(__file__).with_name("yahoo_mailbox.py").read_text(encoding="utf-8")
 
 check(
     "conn.expunge()" not in SOURCE,

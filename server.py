@@ -26,7 +26,7 @@ import time
 import traceback
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from mailbox import Mailbox, MailboxError
+from yahoo_mailbox import Mailbox, MailboxError
 
 # Anthropic publishes the fixed range its servers call out from.
 DEFAULT_ALLOW_CIDRS = "160.79.104.0/21"
@@ -657,22 +657,36 @@ class Handler(BaseHTTPRequestHandler):
 
     # -- helpers --
 
-    def _respond(self, status: int, body: bytes = b"", content_type: str = "application/json"):
+    def _respond(
+        self,
+        status: int,
+        body: bytes = b"",
+        content_type: str = "application/json",
+        close: bool = False,
+    ) -> None:
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
         self.send_header("X-Content-Type-Options", "nosniff")
+        if close:
+            # For replies sent without reading the request body. Closing the
+            # connection discards it; left open, the unread bytes would be
+            # parsed as the next request on the connection and echoed into the
+            # log as a malformed request line -- a free line in the log for
+            # anyone who can reach the port, which is not something to hand out.
+            self.send_header("Connection", "close")
+            self.close_connection = True
         self.end_headers()
         if body:
             self.wfile.write(body)
 
-    def _json(self, status: int, payload: dict) -> None:
-        self._respond(status, json.dumps(payload).encode("utf-8"))
+    def _json(self, status: int, payload: dict, close: bool = False) -> None:
+        self._respond(status, json.dumps(payload).encode("utf-8"), close=close)
 
     def _not_found(self) -> None:
         """The single answer to everything unauthorized: reveal nothing."""
-        self._respond(404, b'{"error":"not found"}')
+        self._respond(404, b'{"error":"not found"}', close=True)
 
     def _authorized(self) -> bool:
         caller = client_ip(
@@ -710,7 +724,9 @@ class Handler(BaseHTTPRequestHandler):
 
         length = _as_int(self.headers.get("Content-Length"), 0)
         if length <= 0 or length > MAX_REQUEST_BYTES:
-            self._json(400, rpc_error(None, -32600, "Missing or oversized request body"))
+            self._json(
+                400, rpc_error(None, -32600, "Missing or oversized request body"), close=True
+            )
             return
 
         raw = self.rfile.read(length)

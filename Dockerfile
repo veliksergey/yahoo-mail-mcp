@@ -9,7 +9,7 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-COPY mailbox.py server.py ./
+COPY yahoo_mailbox.py server.py ./
 
 # Run as a non-root user; nothing here needs to write to disk.
 RUN useradd --create-home --shell /usr/sbin/nologin bridge
