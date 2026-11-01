@@ -1,5 +1,5 @@
 # No dependencies to install: the server is the Python standard library only.
-FROM python:3.12-slim
+FROM python:3.15-slim
 
 LABEL org.opencontainers.image.source="https://github.com/veliksergey/yahoo-mail-mcp" \
       org.opencontainers.image.description="Yahoo Mail bridge: a remote MCP server that cannot delete mail"
